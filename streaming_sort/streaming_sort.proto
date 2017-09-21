@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.routeguide";
+option java_outer_classname = "RouteGuideProto";
+
+package streamin_sort;
+
+message PutDataRequest {
+	StreamGuid streamID = 1;
+	repeated string data = 2 ;
+}
+
+message PutDataResponse {
+	bool isOK = 1;
+	string errorMessage = 2;
+}
+
+message EndStreamResponse {
+	bool isOK = 1;
+	string errorMessage = 2;
+}
+
+message GetDataResponse {
+	string data  = 1;
+}
+
+message StreamGuid {
+	string guid = 1 ;
+}
+
+message Empty {
+}
+
+service StreamingSort {
+	rpc BeginStream(Empty) returns (StreamGuid)  {}
+	rpc PutStreamData(PutDataRequest) returns (PutDataResponse) {}
+	rpc GetSortedStream(StreamGuid) returns (stream GetDataResponse) {}
+	rpc EndStream(StreamGuid) returns (EndStreamResponse) {}
+}
+
