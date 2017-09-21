@@ -12,13 +12,9 @@ message PutDataRequest {
 }
 
 message PutDataResponse {
-	bool isOK = 1;
-	string errorMessage = 2;
 }
 
 message EndStreamResponse {
-	bool isOK = 1;
-	string errorMessage = 2;
 }
 
 message GetDataResponse {

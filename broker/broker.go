@@ -1,3 +1,4 @@
+//protoc -I streaming_sort/ streaming_sort/streaming_sort.proto --go_out=plugins=grpc:streaming_sort
 package main
 
 import (
@@ -12,12 +13,23 @@ var (
 	serverAddr = flag.String("server_addr", "127.0.0.1:10000", "The server address in the format of host:port")
 )
 
-func beginStream(client pb.StreamingSortClient) {
+func beginStream(client pb.StreamingSortClient) string {
 	guid, err := client.BeginStream(context.Background(), &pb.Empty{})
 	if err != nil {
 		log.Fatal(err)
+		return ""
 	}
-	log.Printf("guid = %s", guid)
+	return guid.GetGuid()
+}
+
+func endStream(client pb.StreamingSortClient, guid string) {
+	streamGuid := new(pb.StreamGuid)
+	streamGuid.Guid = guid
+	log.Println(*streamGuid)
+	_, err := client.EndStream(context.Background(), streamGuid)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
@@ -35,7 +47,9 @@ func main() {
 
 	client := pb.NewStreamingSortClient(conn)
 
-	beginStream(client)
+	guid := beginStream(client)
+	log.Printf("guid = %s\n", guid)
+	endStream(client, guid)
 
 	log.Println("Bye!")
 }

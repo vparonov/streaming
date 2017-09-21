@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -29,13 +30,28 @@ type streamingSortServerNode struct {
 
 func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
 	streamGuid := uuid.NewV4().String()
+
+	s.dbMutex.Lock()
+	defer s.dbMutex.Unlock()
+
+	db, err := leveldb.OpenFile(streamGuid, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if s.openDataBases == nil {
+		s.openDataBases = make(map[string](*leveldb.DB))
+	}
+	s.openDataBases[streamGuid] = db
+
 	m := new(pb.StreamGuid)
 	m.Guid = streamGuid
 	return m, nil
 }
 
 func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequest *pb.PutDataRequest) (*pb.PutDataResponse, error) {
-	return nil, nil
+	return &pb.PutDataResponse{}, nil
 }
 
 func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
@@ -43,13 +59,27 @@ func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, str
 }
 
 func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.StreamGuid) (*pb.EndStreamResponse, error) {
-	return nil, nil
+	s.dbMutex.Lock()
+	defer s.dbMutex.Unlock()
+
+	guid := streamGuid.GetGuid()
+
+	db := s.openDataBases[guid]
+	db.Close()
+
+	removeDb(guid)
+
+	return &pb.EndStreamResponse{}, nil
 }
 
 func newServer() *streamingSortServerNode {
 	s := new(streamingSortServerNode)
 	s.openDataBases = make(map[string](*leveldb.DB))
 	return s
+}
+
+func removeDb(dbName string) error {
+	return os.RemoveAll(dbName)
 }
 
 func main() {
