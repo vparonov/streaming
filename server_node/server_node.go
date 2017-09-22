@@ -4,6 +4,8 @@ package main
 
 import (
 	//"github.com/golang/protobuf/proto"
+	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -21,10 +23,14 @@ var (
 	port = flag.Int("port", 10000, "The server port")
 )
 
+type dbConnection struct {
+	db           *leveldb.DB
+	putDataMutex sync.Mutex
+	getDataMutex sync.RWMutex
+}
+
 type streamingSortServerNode struct {
-	openDataBases map[string](*leveldb.DB)
-	putDataMutex  sync.Mutex
-	getDataMutex  sync.RWMutex
+	openDatabases map[string]*dbConnection
 	dbMutex       sync.Mutex
 }
 
@@ -40,10 +46,10 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 		return nil, err
 	}
 
-	if s.openDataBases == nil {
-		s.openDataBases = make(map[string](*leveldb.DB))
-	}
-	s.openDataBases[streamGuid] = db
+	connection := new(dbConnection)
+	connection.db = db
+
+	s.openDatabases[streamGuid] = connection
 
 	m := new(pb.StreamGuid)
 	m.Guid = streamGuid
@@ -51,10 +57,56 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 }
 
 func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequest *pb.PutDataRequest) (*pb.PutDataResponse, error) {
+
+	s.dbMutex.Lock()
+	connection, found := s.openDatabases[putDataRequest.GetStreamID().GetGuid()]
+	s.dbMutex.Unlock()
+
+	if !found {
+		retErr := errors.New("StreamGuid not found!")
+		return &pb.PutDataResponse{}, retErr
+	}
+
+	// TODO: add transaction semantic here
+	for _, word := range putDataRequest.GetData() {
+		err := s.put(connection, word)
+		if err != nil {
+			return &pb.PutDataResponse{}, err
+		}
+	}
+
 	return &pb.PutDataResponse{}, nil
 }
 
 func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
+	s.dbMutex.Lock()
+	connection, found := s.openDatabases[streamGuid.GetGuid()]
+	s.dbMutex.Unlock()
+
+	if !found {
+		retErr := errors.New("StreamGuid not found!")
+		return retErr
+	}
+
+	connection.getDataMutex.Lock()
+	defer connection.getDataMutex.Unlock()
+
+	iter := connection.db.NewIterator(nil, nil)
+	defer iter.Release()
+
+	for iter.Next() {
+		key := iter.Key()
+		data := string(key[:])
+		n := binary.LittleEndian.Uint64(iter.Value())
+		for i := uint64(0); i < n; i++ {
+			response := &pb.GetDataResponse{Data: data}
+			err := stream.Send(response)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -64,22 +116,49 @@ func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.
 
 	guid := streamGuid.GetGuid()
 
-	db := s.openDataBases[guid]
-	db.Close()
+	connection := s.openDatabases[guid]
+	connection.db.Close()
 
-	removeDb(guid)
+	s.removeDb(guid)
 
 	return &pb.EndStreamResponse{}, nil
 }
 
 func newServer() *streamingSortServerNode {
 	s := new(streamingSortServerNode)
-	s.openDataBases = make(map[string](*leveldb.DB))
+	s.openDatabases = make(map[string]*dbConnection)
 	return s
 }
 
-func removeDb(dbName string) error {
+// private functions
+
+func (s *streamingSortServerNode) removeDb(dbName string) error {
 	return os.RemoveAll(dbName)
+}
+
+func (s *streamingSortServerNode) put(connection *dbConnection, word string) error {
+	key := []byte(word)
+	buf := make([]byte, 8)
+
+	connection.putDataMutex.Lock()
+	defer connection.putDataMutex.Unlock()
+
+	currentData, _ := connection.db.Get(key, nil)
+
+	if currentData == nil {
+		binary.LittleEndian.PutUint64(buf, 1)
+	} else {
+		counter := binary.LittleEndian.Uint64(currentData)
+		binary.LittleEndian.PutUint64(buf, counter+1)
+	}
+
+	err := connection.db.Put(key, buf, nil)
+
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	return nil
 }
 
 func main() {
