@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	sc "github.com/vparonov/streaming/client"
+	"gopkg.in/cheggaaa/pb.v1"
 	"log"
 	"os"
 )
@@ -18,7 +20,7 @@ var (
 
 func putData(client sc.StreamingSortClient, guid string, data []string, done chan int) {
 	client.PutStreamData(guid, data)
-
+	fmt.Printf("*")
 	done <- 1
 }
 
@@ -128,11 +130,13 @@ func ver1() {
 	//
 	log.Println("Waiting for go routines")
 
+	bar := pb.StartNew(procs)
 	for i := 0; i < procs; i++ {
 		<-done
+		bar.Increment()
 	}
 
-	log.Println("Getting sorted stream")
+	log.Println("\nGetting sorted stream")
 	err = client.GetSortedStream(guid, f)
 
 	if err != nil {
