@@ -13,6 +13,7 @@ import (
 	pb "github.com/vparonov/streaming/streaming_sort"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -25,6 +26,7 @@ var (
 
 type dbConnection struct {
 	db           *leveldb.DB
+	guid         string
 	putDataMutex sync.Mutex
 	getDataMutex sync.RWMutex
 }
@@ -48,6 +50,7 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 
 	connection := new(dbConnection)
 	connection.db = db
+	connection.guid = streamGuid
 
 	s.openDatabases[streamGuid] = connection
 
@@ -78,7 +81,39 @@ func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequ
 	return &pb.PutDataResponse{}, nil
 }
 
+func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStreamData2Server) error {
+	var connection *dbConnection
+
+	for {
+		req, err := stream.Recv()
+
+		tmpGuid := req.GetStreamID()
+		if tmpGuid != "" {
+			connection, err = s.getConnection(tmpGuid)
+			if err != nil {
+				return err
+			}
+		}
+		if err == io.EOF {
+			return stream.SendAndClose(&pb.PutDataResponse{})
+		}
+
+		if err != nil {
+			return err
+		}
+
+		for _, word := range req.GetData() {
+			err := s.put(connection, word)
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+
 func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
+	//log.Println("GetSortedStream")
+
 	s.dbMutex.Lock()
 	connection, found := s.openDatabases[streamGuid.GetGuid()]
 	s.dbMutex.Unlock()
@@ -111,6 +146,8 @@ func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, str
 }
 
 func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.StreamGuid) (*pb.EndStreamResponse, error) {
+	//log.Println("EndStream")
+
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
 
@@ -159,6 +196,19 @@ func (s *streamingSortServerNode) put(connection *dbConnection, word string) err
 		return err
 	}
 	return nil
+}
+
+func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, error) {
+	s.dbMutex.Lock()
+	connection, found := s.openDatabases[guid]
+	s.dbMutex.Unlock()
+
+	if !found {
+		retErr := errors.New("StreamGuid not found!")
+		return nil, retErr
+	}
+
+	return connection, nil
 }
 
 func main() {

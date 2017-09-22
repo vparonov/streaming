@@ -11,6 +11,11 @@ message PutDataRequest {
 	repeated string data = 2 ;
 }
 
+message PutDataRequest2 {
+	string streamID = 1 ;
+	repeated string data = 2 ;
+}
+
 message PutDataResponse {
 }
 
@@ -33,5 +38,7 @@ service StreamingSort {
 	rpc PutStreamData(PutDataRequest) returns (PutDataResponse) {}
 	rpc GetSortedStream(StreamGuid) returns (stream GetDataResponse) {}
 	rpc EndStream(StreamGuid) returns (EndStreamResponse) {}
+
+	rpc PutStreamData2(stream PutDataRequest2) returns (PutDataResponse) {}
 }
 
