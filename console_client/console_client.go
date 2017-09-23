@@ -28,12 +28,13 @@ func main() {
 	if *version == 1 {
 		ver1()
 	} else if *version == 2 {
-		ver2()
+		//		ver2()
 	} else {
 		log.Println("Version should be 1 or 2!")
 	}
 }
 
+/*
 func ver2() {
 	log.Println("Starting console client....")
 	flag.Parse()
@@ -49,6 +50,8 @@ func ver2() {
 	f, err := os.Create(*outputFileName)
 	defer f.Close()
 
+	consumer := NewIOWriterConsumer(f)
+
 	infile, err := os.Open(*inputFileName)
 	if err != nil {
 		log.Fatal(err)
@@ -62,7 +65,7 @@ func ver2() {
 	err = client.PutStreamData2(guid, scanner, *bufferSize)
 
 	log.Println("Getting sorted stream")
-	err = client.GetSortedStream(guid, f)
+	err = client.GetSortedStream(guid, consumer)
 
 	if err != nil {
 		log.Fatal(err)
@@ -75,7 +78,7 @@ func ver2() {
 
 	log.Println("Bye!")
 }
-
+*/
 func ver1() {
 	log.Println("Starting console client....")
 	flag.Parse()
@@ -90,6 +93,15 @@ func ver1() {
 
 	f, err := os.Create(*outputFileName)
 	defer f.Close()
+
+	//consumer := sc.NewIOWriterConsumer(f)
+	array := make([]string, 0)
+
+	consumer := sc.NewStringArrayConsumer(&array)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	infile, err := os.Open(*inputFileName)
 	if err != nil {
@@ -137,10 +149,13 @@ func ver1() {
 	}
 
 	log.Println("\nGetting sorted stream")
-	err = client.GetSortedStream(guid, f)
-
+	err = client.GetSortedStream(guid, consumer)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	for _, s := range array {
+		log.Println(s)
 	}
 
 	err = client.EndStream(guid)

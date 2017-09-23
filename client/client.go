@@ -3,7 +3,6 @@ package client
 
 import (
 	"bufio"
-	"fmt"
 	pb "github.com/vparonov/streaming/streaming_sort"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -15,9 +14,13 @@ type StreamingSortClient interface {
 	BeginStream() (string, error)
 	PutStreamData(string, []string) error
 	PutStreamData2(string, *bufio.Scanner, int) error
-	GetSortedStream(string, io.Writer) error
+	GetSortedStream(string, StreamingSortConsumer) error
 	EndStream(string) error
 	CloseConnection() error
+}
+
+type StreamingSortConsumer interface {
+	Consume(string) error
 }
 
 type streamingSortClient struct {
@@ -52,8 +55,8 @@ func (c *streamingSortClient) PutStreamData2(guid string, reader *bufio.Scanner,
 	return putStreamData2(c.client, guid, reader, bufferSize)
 }
 
-func (c *streamingSortClient) GetSortedStream(guid string, output io.Writer) error {
-	return getSortedStream(c.client, guid, output)
+func (c *streamingSortClient) GetSortedStream(guid string, consumer StreamingSortConsumer) error {
+	return getSortedStream(c.client, guid, consumer)
 }
 
 func (c *streamingSortClient) EndStream(guid string) error {
@@ -136,7 +139,7 @@ func putStreamData2(client pb.StreamingSortClient, guid string, input *bufio.Sca
 	return err
 }
 
-func getSortedStream(client pb.StreamingSortClient, guid string, output io.Writer) error {
+func getSortedStream(client pb.StreamingSortClient, guid string, consumer StreamingSortConsumer) error {
 	sg := new(pb.StreamGuid)
 	sg.Guid = guid
 
@@ -157,7 +160,7 @@ func getSortedStream(client pb.StreamingSortClient, guid string, output io.Write
 			return err
 		}
 
-		fmt.Fprintf(output, "%s\n", data.GetData())
+		consumer.Consume(data.GetData())
 	}
 
 	return nil

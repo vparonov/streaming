@@ -61,13 +61,10 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 
 func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequest *pb.PutDataRequest) (*pb.PutDataResponse, error) {
 
-	s.dbMutex.Lock()
-	connection, found := s.openDatabases[putDataRequest.GetStreamID().GetGuid()]
-	s.dbMutex.Unlock()
+	connection, err := s.getConnection(putDataRequest.GetStreamID().GetGuid())
 
-	if !found {
-		retErr := errors.New("StreamGuid not found!")
-		return &pb.PutDataResponse{}, retErr
+	if err != nil {
+		return &pb.PutDataResponse{}, err
 	}
 
 	// TODO: add transaction semantic here
@@ -114,19 +111,21 @@ func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStre
 func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
 	//log.Println("GetSortedStream")
 
-	s.dbMutex.Lock()
-	connection, found := s.openDatabases[streamGuid.GetGuid()]
-	s.dbMutex.Unlock()
+	connection, err := s.getConnection(streamGuid.GetGuid())
 
-	if !found {
-		retErr := errors.New("StreamGuid not found!")
-		return retErr
+	if err != nil {
+		return err
 	}
 
-	connection.getDataMutex.Lock()
-	defer connection.getDataMutex.Unlock()
+	snapshot, err := connection.db.GetSnapshot()
 
-	iter := connection.db.NewIterator(nil, nil)
+	if err != nil {
+		return err
+	}
+
+	defer snapshot.Release()
+
+	iter := snapshot.NewIterator(nil, nil)
 	defer iter.Release()
 
 	for iter.Next() {
@@ -154,9 +153,16 @@ func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.
 	guid := streamGuid.GetGuid()
 
 	connection := s.openDatabases[guid]
-	connection.db.Close()
 
-	s.removeDb(guid)
+	err := connection.db.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.removeDb(guid)
+	if err != nil {
+		return nil, err
+	}
 
 	return &pb.EndStreamResponse{}, nil
 }
@@ -211,17 +217,28 @@ func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, err
 	return connection, nil
 }
 
-func main() {
-	flag.Parse()
-	log.Printf("Starting server at localhost:%d", *port)
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
+func startServer(host string, port int) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
+		return err
 	}
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterStreamingSortServer(grpcServer, newServer())
 	grpcServer.Serve(lis)
 
+	return nil
+}
+
+func main() {
+	flag.Parse()
+	log.Printf("Starting server at localhost:%d", *port)
+
+	err := startServer("localhost", *port)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 	log.Print("Bye!\n")
 }
