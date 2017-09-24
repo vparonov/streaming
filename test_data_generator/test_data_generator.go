@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"time"
 )
 
@@ -28,8 +29,13 @@ func init() {
 func main() {
 	flag.Parse()
 
+	var lineDelimiter = "\n"
+	if runtime.GOOS == "windows" {
+		lineDelimiter = "\r\n"
+	}
+
 	for i := 0; i < *number_of_words; i++ {
-		fmt.Printf("%s\n", RandStringRunes(*word_length))
+		fmt.Printf("%s%s", RandStringRunes(*word_length), lineDelimiter)
 	}
 
 }

@@ -23,12 +23,14 @@ func TestBeginStream_EndStream(t *testing.T) {
 	done := make(chan int)
 
 	go func() {
+		defer func() { done <- 1 }()
+
 		client := sc.NewStreamingSortClient("localhost:10000")
 		defer client.CloseConnection()
 
 		guid, err := client.BeginStream()
 		if err != nil {
-			t.Fail()
+			t.Fatal(err)
 		}
 
 		err = client.EndStream(guid)
@@ -39,8 +41,6 @@ func TestBeginStream_EndStream(t *testing.T) {
 		if _, err := os.Stat(guid); os.IsExist(err) {
 			t.Error("Expected ", guid, " not to exists!")
 		}
-
-		done <- 1
 	}()
 	<-done
 }
@@ -49,12 +49,13 @@ func TestSorting(t *testing.T) {
 	done := make(chan int)
 
 	go func() {
+		defer func() { done <- 1 }()
 		client := sc.NewStreamingSortClient("localhost:10000")
 		defer client.CloseConnection()
 
 		guid, err := client.BeginStream()
 		if err != nil {
-			t.Fail()
+			t.Fatal(err)
 		}
 
 		inputArray := makeInputArray()
@@ -66,12 +67,12 @@ func TestSorting(t *testing.T) {
 		err = client.PutStreamData(guid, inputArray)
 
 		if err != nil {
-			t.Fail()
+			t.Fatal(err)
 		}
 
 		err = client.GetSortedStream(guid, consumer)
 		if err != nil {
-			t.Fail()
+			t.Fatal(err)
 		}
 
 		sort.Strings(inputArray)
@@ -84,14 +85,12 @@ func TestSorting(t *testing.T) {
 
 		err = client.EndStream(guid)
 		if err != nil {
-			t.Fail()
+			t.Fatal(err)
 		}
 
 		if _, err := os.Stat(guid); os.IsExist(err) {
 			t.Error("Expected ", guid, " not to exists!")
 		}
-
-		done <- 1
 	}()
 	<-done
 }
@@ -100,12 +99,14 @@ func TestConcurentCalls(t *testing.T) {
 	done := make(chan int)
 
 	go func() {
+		defer func() { done <- 1 }()
+
 		client := sc.NewStreamingSortClient("localhost:10000")
 		defer client.CloseConnection()
 
 		guid, err := client.BeginStream()
 		if err != nil {
-			t.Fail()
+			t.Fatalf("BeginStream failed")
 		}
 
 		inputArray := makeInputArray()
@@ -117,12 +118,12 @@ func TestConcurentCalls(t *testing.T) {
 		err = client.PutStreamData(guid, inputArray)
 
 		if err != nil {
-			t.Fail()
+			t.Fatalf("PutStream failed")
 		}
 
 		err = client.GetSortedStream(guid, consumer)
 		if err != nil {
-			t.Fail()
+			t.Fatalf("GetSortedStream failed")
 		}
 
 		sort.Strings(inputArray)
@@ -131,14 +132,12 @@ func TestConcurentCalls(t *testing.T) {
 
 		err = client.EndStream(guid)
 		if err != nil {
-			t.Fail()
+			t.Fatalf("EndStream failed")
 		}
 
 		if _, err := os.Stat(guid); os.IsExist(err) {
-			t.Error("Expected ", guid, " not to exists!")
+			t.Fatalf("Expected ", guid, " not to exists!")
 		}
-
-		done <- 1
 	}()
 	<-done
 }

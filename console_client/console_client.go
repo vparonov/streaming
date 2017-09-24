@@ -94,10 +94,10 @@ func ver1() {
 	f, err := os.Create(*outputFileName)
 	defer f.Close()
 
-	//consumer := sc.NewIOWriterConsumer(f)
-	array := make([]string, 0)
+	consumer := sc.NewIOWriterConsumer(f)
+	//	array := make([]string, 0)
 
-	consumer := sc.NewStringArrayConsumer(&array)
+	//	consumer := sc.NewStringArrayConsumer(&array)
 
 	if err != nil {
 		log.Fatal(err)
@@ -127,6 +127,7 @@ func ver1() {
 		if ix == bufsize {
 			procs += 1
 			go putData(client, guid, ar, done)
+			ar = make([]string, bufsize)
 			ix = 0
 		}
 	}
@@ -154,9 +155,9 @@ func ver1() {
 		log.Fatal(err)
 	}
 
-	for _, s := range array {
-		log.Println(s)
-	}
+	//	for _, s := range array {
+	//		log.Println(s)
+	//	}
 
 	err = client.EndStream(guid)
 	if err != nil {

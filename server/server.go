@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -28,6 +29,7 @@ type dbConnection struct {
 	db           *leveldb.DB
 	guid         string
 	putDataMutex sync.Mutex
+	identity     uint64
 }
 
 type streamingSortServerNode struct {
@@ -35,12 +37,7 @@ type streamingSortServerNode struct {
 	dbMutex       sync.Mutex
 }
 
-func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
-	s.dbMutex.Lock()
-	defer s.dbMutex.Unlock()
-
-	streamGuid := uuid.NewV4().String()
-
+func newDbConnection(streamGuid string) (*dbConnection, error) {
 	db, err := leveldb.OpenFile(streamGuid, nil)
 
 	if err != nil {
@@ -50,6 +47,22 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 	connection := new(dbConnection)
 	connection.db = db
 	connection.guid = streamGuid
+	connection.identity = 0
+
+	return connection, nil
+}
+
+func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
+	s.dbMutex.Lock()
+	defer s.dbMutex.Unlock()
+
+	streamGuid := uuid.NewV4().String()
+
+	connection, err := newDbConnection(streamGuid)
+
+	if err != nil {
+		return nil, err
+	}
 
 	s.openDatabases[streamGuid] = connection
 
@@ -66,13 +79,31 @@ func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequ
 		return &pb.PutDataResponse{}, err
 	}
 
-	// TODO: add transaction semantic here
-	for _, word := range putDataRequest.GetData() {
-		err := s.put(connection, word)
-		if err != nil {
-			return &pb.PutDataResponse{}, err
-		}
+	data := putDataRequest.GetData()
+
+	batch := new(leveldb.Batch)
+	for _, word := range data {
+		key, value := connection.transformData(word)
+		batch.Put(key, value)
 	}
+
+	err = connection.db.Write(batch, nil)
+
+	if err != nil {
+		return &pb.PutDataResponse{}, err
+	}
+
+	//batch.Put([]byte("foo"), []byte("value"))
+	//batch.Put([]byte("bar"), []byte("another value"))
+	//batch.Delete([]byte("baz"))
+	//err = db.Write(batch, nil)
+
+	//	for _, word := range data {
+	//		err := s.put(connection, word)
+	//		if err != nil {
+	//			return &pb.PutDataResponse{}, err
+	//		}
+	//	}
 
 	return &pb.PutDataResponse{}, nil
 }
@@ -98,11 +129,16 @@ func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStre
 			return err
 		}
 
+		batch := new(leveldb.Batch)
 		for _, word := range req.GetData() {
-			err := s.put(connection, word)
-			if err != nil {
-				return err
-			}
+			key, value := connection.transformData(word)
+			batch.Put(key, value)
+		}
+
+		err = connection.db.Write(batch, nil)
+
+		if err != nil {
+			return err
 		}
 	}
 }
@@ -127,14 +163,16 @@ func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, str
 
 	for iter.Next() {
 		key := iter.Key()
-		data := string(key[:])
-		n := binary.LittleEndian.Uint64(iter.Value())
-		for i := uint64(0); i < n; i++ {
-			response := &pb.GetDataResponse{Data: data}
-			err := stream.Send(response)
-			if err != nil {
-				return err
-			}
+		var data string
+		if len(key) > 0 {
+			data = string(key[:len(key)-9])
+		} else {
+			data = ""
+		}
+		response := &pb.GetDataResponse{Data: data}
+		err := stream.Send(response)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -174,6 +212,27 @@ func (s *streamingSortServerNode) removeDb(dbName string) error {
 	return os.RemoveAll(dbName)
 }
 
+func (connection *dbConnection) transformData(data string) ([]byte, []byte) {
+
+	var emptyArray []byte
+	key := []byte(data)
+
+	buf := make([]byte, 8)
+
+	connection.putDataMutex.Lock()
+
+	atomic.AddUint64(&connection.identity, 1)
+	binary.LittleEndian.PutUint64(buf, connection.identity)
+
+	connection.putDataMutex.Unlock()
+
+	key = append(key, 0)
+	key = append(key, buf[:]...)
+
+	return key, emptyArray
+}
+
+/*
 func (s *streamingSortServerNode) put(connection *dbConnection, word string) error {
 	key := []byte(word)
 	buf := make([]byte, 8)
@@ -181,16 +240,16 @@ func (s *streamingSortServerNode) put(connection *dbConnection, word string) err
 	connection.putDataMutex.Lock()
 	defer connection.putDataMutex.Unlock()
 
-	currentData, _ := connection.db.Get(key, nil)
+	currentData, err := connection.db.Get(key, nil)
 
-	if currentData == nil {
+	if err == leveldb.ErrNotFound {
 		binary.LittleEndian.PutUint64(buf, 1)
 	} else {
 		counter := binary.LittleEndian.Uint64(currentData)
 		binary.LittleEndian.PutUint64(buf, counter+1)
 	}
 
-	err := connection.db.Put(key, buf, nil)
+	err = connection.db.Put(key, buf, nil)
 
 	if err != nil {
 		log.Fatal(err)
@@ -198,7 +257,7 @@ func (s *streamingSortServerNode) put(connection *dbConnection, word string) err
 	}
 	return nil
 }
-
+*/
 func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, error) {
 	s.dbMutex.Lock()
 	connection, found := s.openDatabases[guid]
