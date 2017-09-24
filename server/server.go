@@ -28,7 +28,6 @@ type dbConnection struct {
 	db           *leveldb.DB
 	guid         string
 	putDataMutex sync.Mutex
-	getDataMutex sync.RWMutex
 }
 
 type streamingSortServerNode struct {
@@ -37,10 +36,10 @@ type streamingSortServerNode struct {
 }
 
 func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
-	streamGuid := uuid.NewV4().String()
-
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
+
+	streamGuid := uuid.NewV4().String()
 
 	db, err := leveldb.OpenFile(streamGuid, nil)
 
@@ -109,8 +108,6 @@ func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStre
 }
 
 func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
-	//log.Println("GetSortedStream")
-
 	connection, err := s.getConnection(streamGuid.GetGuid())
 
 	if err != nil {
@@ -140,13 +137,11 @@ func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, str
 			}
 		}
 	}
-
 	return nil
+
 }
 
 func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.StreamGuid) (*pb.EndStreamResponse, error) {
-	//log.Println("EndStream")
-
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
 

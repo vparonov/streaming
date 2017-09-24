@@ -159,17 +159,14 @@ func getSortedStream(client pb.StreamingSortClient, guid string, consumer Stream
 			log.Fatalf("%v.GetSortedStream(_) = _, %v", client, err)
 			return err
 		}
-
 		consumer.Consume(data.GetData())
 	}
-
 	return nil
 }
 
 func endStream(client pb.StreamingSortClient, guid string) error {
 	streamGuid := new(pb.StreamGuid)
 	streamGuid.Guid = guid
-	log.Println(*streamGuid)
 	_, err := client.EndStream(context.Background(), streamGuid)
 	if err != nil {
 		log.Fatal(err)
