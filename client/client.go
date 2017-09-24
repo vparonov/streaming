@@ -111,20 +111,21 @@ func putStreamData2(client pb.StreamingSortClient, guid string, input *bufio.Sca
 			if i == 1 {
 				req.StreamID = ""
 			}
-			i++
-			ix = 0
 			err := stream.Send(req)
 			if err != nil {
 				log.Fatalf("%v.Send(%v) = %v", stream, req, err)
 			}
+
+			i++
+			ix = 0
 		}
 	}
 
 	if ix > 0 {
+		req.Data = req.Data[0:ix]
 		if i == 1 {
 			req.StreamID = ""
 		}
-		req.Data = req.Data[0:ix]
 		err := stream.Send(req)
 		if err != nil {
 			log.Fatalf("%v.Send(%v) = %v", stream, req, err)

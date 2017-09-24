@@ -3,7 +3,6 @@
 package main
 
 import (
-	//"github.com/golang/protobuf/proto"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -92,18 +91,6 @@ func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequ
 	if err != nil {
 		return &pb.PutDataResponse{}, err
 	}
-
-	//batch.Put([]byte("foo"), []byte("value"))
-	//batch.Put([]byte("bar"), []byte("another value"))
-	//batch.Delete([]byte("baz"))
-	//err = db.Write(batch, nil)
-
-	//	for _, word := range data {
-	//		err := s.put(connection, word)
-	//		if err != nil {
-	//			return &pb.PutDataResponse{}, err
-	//		}
-	//	}
 
 	return &pb.PutDataResponse{}, nil
 }
@@ -232,32 +219,6 @@ func (connection *dbConnection) transformData(data string) ([]byte, []byte) {
 	return key, emptyArray
 }
 
-/*
-func (s *streamingSortServerNode) put(connection *dbConnection, word string) error {
-	key := []byte(word)
-	buf := make([]byte, 8)
-
-	connection.putDataMutex.Lock()
-	defer connection.putDataMutex.Unlock()
-
-	currentData, err := connection.db.Get(key, nil)
-
-	if err == leveldb.ErrNotFound {
-		binary.LittleEndian.PutUint64(buf, 1)
-	} else {
-		counter := binary.LittleEndian.Uint64(currentData)
-		binary.LittleEndian.PutUint64(buf, counter+1)
-	}
-
-	err = connection.db.Put(key, buf, nil)
-
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	return nil
-}
-*/
 func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, error) {
 	s.dbMutex.Lock()
 	connection, found := s.openDatabases[guid]

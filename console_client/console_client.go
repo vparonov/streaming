@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"
 	sc "github.com/vparonov/streaming/client"
 	"gopkg.in/cheggaaa/pb.v1"
 	"log"
@@ -20,69 +19,23 @@ var (
 
 func putData(client sc.StreamingSortClient, guid string, data []string, done chan int) {
 	client.PutStreamData(guid, data)
-	fmt.Printf("*")
 	done <- 1
 }
 
 func main() {
+	log.Println("Starting console client....")
+	flag.Parse()
+
 	if *version == 1 {
 		ver1()
 	} else if *version == 2 {
-		//		ver2()
+		ver2()
 	} else {
 		log.Println("Version should be 1 or 2!")
 	}
 }
 
-/*
-func ver2() {
-	log.Println("Starting console client....")
-	flag.Parse()
-
-	client := sc.NewStreamingSortClient(*serverAddr)
-	defer client.CloseConnection()
-
-	guid, err := client.BeginStream()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	f, err := os.Create(*outputFileName)
-	defer f.Close()
-
-	consumer := NewIOWriterConsumer(f)
-
-	infile, err := os.Open(*inputFileName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer infile.Close()
-
-	scanner := bufio.NewScanner(infile)
-
-	log.Println("Reading input file")
-
-	err = client.PutStreamData2(guid, scanner, *bufferSize)
-
-	log.Println("Getting sorted stream")
-	err = client.GetSortedStream(guid, consumer)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = client.EndStream(guid)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("Bye!")
-}
-*/
 func ver1() {
-	log.Println("Starting console client....")
-	flag.Parse()
-
 	client := sc.NewStreamingSortClient(*serverAddr)
 	defer client.CloseConnection()
 
@@ -95,9 +48,6 @@ func ver1() {
 	defer f.Close()
 
 	consumer := sc.NewIOWriterConsumer(f)
-	//	array := make([]string, 0)
-
-	//	consumer := sc.NewStringArrayConsumer(&array)
 
 	if err != nil {
 		log.Fatal(err)
@@ -116,7 +66,6 @@ func ver1() {
 	ar := make([]string, bufsize)
 
 	ix := 0
-	log.Println("Reading input file")
 
 	done := make(chan int)
 	procs := 0
@@ -140,8 +89,6 @@ func ver1() {
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
-	//
-	log.Println("Waiting for go routines")
 
 	bar := pb.StartNew(procs)
 	for i := 0; i < procs; i++ {
@@ -149,15 +96,49 @@ func ver1() {
 		bar.Increment()
 	}
 
-	log.Println("\nGetting sorted stream")
 	err = client.GetSortedStream(guid, consumer)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	//	for _, s := range array {
-	//		log.Println(s)
-	//	}
+	err = client.EndStream(guid)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func ver2() {
+	client := sc.NewStreamingSortClient(*serverAddr)
+	defer client.CloseConnection()
+
+	guid, err := client.BeginStream()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	f, err := os.Create(*outputFileName)
+	defer f.Close()
+
+	consumer := sc.NewIOWriterConsumer(f)
+
+	infile, err := os.Open(*inputFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer infile.Close()
+
+	scanner := bufio.NewScanner(infile)
+
+	log.Println("Reading input file")
+
+	err = client.PutStreamData2(guid, scanner, *bufferSize)
+
+	log.Println("Getting sorted stream")
+	err = client.GetSortedStream(guid, consumer)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	err = client.EndStream(guid)
 	if err != nil {
