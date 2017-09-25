@@ -46,6 +46,26 @@ func newDbConnection(streamGuid string) (*dbConnection, error) {
 	return connection, nil
 }
 
+func (connection *dbConnection) transformData(data string) ([]byte, []byte) {
+
+	var emptyArray []byte
+	key := []byte(data)
+
+	buf := make([]byte, 8)
+
+	connection.putDataMutex.Lock()
+
+	atomic.AddUint64(&connection.identity, 1)
+	binary.LittleEndian.PutUint64(buf, connection.identity)
+
+	connection.putDataMutex.Unlock()
+
+	key = append(key, 0)
+	key = append(key, buf[:]...)
+
+	return key, emptyArray
+}
+
 func (s *streamingSortServer) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
@@ -119,9 +139,7 @@ func (s *streamingSortServer) PutStreamData2(stream pb.StreamingSort_PutStreamDa
 
 		err = connection.db.Write(batch, nil)
 
-		if err != nil {
-			return err
-		}
+		return err
 	}
 }
 
@@ -179,6 +197,8 @@ func (s *streamingSortServer) EndStream(ctx context.Context, streamGuid *pb.Stre
 		return nil, err
 	}
 
+	delete(s.openDatabases, guid)
+
 	return &pb.EndStreamResponse{}, nil
 }
 
@@ -192,26 +212,6 @@ func newServer() *streamingSortServer {
 
 func (s *streamingSortServer) removeDb(dbName string) error {
 	return os.RemoveAll(dbName)
-}
-
-func (connection *dbConnection) transformData(data string) ([]byte, []byte) {
-
-	var emptyArray []byte
-	key := []byte(data)
-
-	buf := make([]byte, 8)
-
-	connection.putDataMutex.Lock()
-
-	atomic.AddUint64(&connection.identity, 1)
-	binary.LittleEndian.PutUint64(buf, connection.identity)
-
-	connection.putDataMutex.Unlock()
-
-	key = append(key, 0)
-	key = append(key, buf[:]...)
-
-	return key, emptyArray
 }
 
 func (s *streamingSortServer) getConnection(guid string) (*dbConnection, error) {
