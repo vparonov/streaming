@@ -1,11 +1,10 @@
 //protoc -I streaming_sort/ streaming_sort/streaming_sort.proto --go_out=plugins=grpc:streaming_sort
 
-package main
+package server
 
 import (
 	"encoding/binary"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/twinj/uuid"
@@ -20,10 +19,6 @@ import (
 	"sync/atomic"
 )
 
-var (
-	port = flag.Int("port", 10000, "The server port")
-)
-
 type dbConnection struct {
 	db           *leveldb.DB
 	guid         string
@@ -31,7 +26,7 @@ type dbConnection struct {
 	identity     uint64
 }
 
-type streamingSortServerNode struct {
+type streamingSortServer struct {
 	openDatabases map[string]*dbConnection
 	dbMutex       sync.Mutex
 }
@@ -51,7 +46,7 @@ func newDbConnection(streamGuid string) (*dbConnection, error) {
 	return connection, nil
 }
 
-func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
+func (s *streamingSortServer) BeginStream(ctx context.Context, dummy *pb.Empty) (*pb.StreamGuid, error) {
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
 
@@ -70,7 +65,7 @@ func (s *streamingSortServerNode) BeginStream(ctx context.Context, dummy *pb.Emp
 	return m, nil
 }
 
-func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequest *pb.PutDataRequest) (*pb.PutDataResponse, error) {
+func (s *streamingSortServer) PutStreamData(ctx context.Context, putDataRequest *pb.PutDataRequest) (*pb.PutDataResponse, error) {
 
 	connection, err := s.getConnection(putDataRequest.GetStreamID().GetGuid())
 
@@ -95,7 +90,7 @@ func (s *streamingSortServerNode) PutStreamData(ctx context.Context, putDataRequ
 	return &pb.PutDataResponse{}, nil
 }
 
-func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStreamData2Server) error {
+func (s *streamingSortServer) PutStreamData2(stream pb.StreamingSort_PutStreamData2Server) error {
 	var connection *dbConnection
 
 	for {
@@ -130,7 +125,7 @@ func (s *streamingSortServerNode) PutStreamData2(stream pb.StreamingSort_PutStre
 	}
 }
 
-func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
+func (s *streamingSortServer) GetSortedStream(streamGuid *pb.StreamGuid, stream pb.StreamingSort_GetSortedStreamServer) error {
 	connection, err := s.getConnection(streamGuid.GetGuid())
 
 	if err != nil {
@@ -166,7 +161,7 @@ func (s *streamingSortServerNode) GetSortedStream(streamGuid *pb.StreamGuid, str
 
 }
 
-func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.StreamGuid) (*pb.EndStreamResponse, error) {
+func (s *streamingSortServer) EndStream(ctx context.Context, streamGuid *pb.StreamGuid) (*pb.EndStreamResponse, error) {
 	s.dbMutex.Lock()
 	defer s.dbMutex.Unlock()
 
@@ -187,15 +182,15 @@ func (s *streamingSortServerNode) EndStream(ctx context.Context, streamGuid *pb.
 	return &pb.EndStreamResponse{}, nil
 }
 
-func newServer() *streamingSortServerNode {
-	s := new(streamingSortServerNode)
+func newServer() *streamingSortServer {
+	s := new(streamingSortServer)
 	s.openDatabases = make(map[string]*dbConnection)
 	return s
 }
 
 // private functions
 
-func (s *streamingSortServerNode) removeDb(dbName string) error {
+func (s *streamingSortServer) removeDb(dbName string) error {
 	return os.RemoveAll(dbName)
 }
 
@@ -219,7 +214,7 @@ func (connection *dbConnection) transformData(data string) ([]byte, []byte) {
 	return key, emptyArray
 }
 
-func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, error) {
+func (s *streamingSortServer) getConnection(guid string) (*dbConnection, error) {
 	s.dbMutex.Lock()
 	connection, found := s.openDatabases[guid]
 	s.dbMutex.Unlock()
@@ -232,7 +227,7 @@ func (s *streamingSortServerNode) getConnection(guid string) (*dbConnection, err
 	return connection, nil
 }
 
-func startServer(host string, port int) error {
+func StartServer(host string, port int) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -244,16 +239,4 @@ func startServer(host string, port int) error {
 	grpcServer.Serve(lis)
 
 	return nil
-}
-
-func main() {
-	flag.Parse()
-	log.Printf("Starting server at localhost:%d", *port)
-
-	err := startServer("localhost", *port)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Print("Bye!\n")
 }

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	sc "github.com/vparonov/streaming/client"
@@ -10,7 +10,7 @@ import (
 
 func init() {
 	go func() {
-		err := startServer("localhost", 10000)
+		err := StartServer("localhost", 10000)
 
 		if err != nil {
 			log.Fatal(err)
