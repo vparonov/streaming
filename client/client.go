@@ -1,13 +1,15 @@
+//Package client: implements streaming sort client
 //protoc -I streaming_sort/ streaming_sort/streaming_sort.proto --go_out=plugins=grpc:streaming_sort
 package client
 
 import (
 	"bufio"
+	"io"
+	"log"
+
 	pb "github.com/vparonov/streaming/streaming_sort"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"io"
-	"log"
 )
 
 type StreamingSortClient interface {
